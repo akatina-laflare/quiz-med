@@ -1048,8 +1048,8 @@
           <div class="config-item">
             <div class="config-label">🔢 Numero domande: <span id="n-label" style="color:var(--accent);font-family:var(--mono)">10</span></div>
             <div class="slider-row">
-              <input type="range" id="n-slider" min="1" max="90" value="10" step="1" oninput="updateNSlider()">
-              <span class="slider-val" id="n-max-label">/ 90</span>
+              <input type="range" id="n-slider" min="1" max="1135" value="10" step="1" oninput="updateNSlider()">
+              <span class="slider-val" id="n-max-label">/ 1135</span>
             </div>
           </div>
 
@@ -1223,7 +1223,7 @@
         </div>
         <div style="font-size:20px;font-weight:700;margin-bottom:4px">Scansiona l'esame</div>
         <div style="font-size:14px;color:var(--text2);margin-bottom:16px;line-height:1.5">
-          Fai una foto alla pagina dell'esame cartaceo. L'AI legge le domande e trova automaticamente le risposte nel database.
+          Fai una foto alla pagina dell'esame cartaceo. Il sistema legge il testo con OCR e trova automaticamente le risposte nel database. <strong>Funziona offline, senza internet.</strong>
         </div>
         <div class="scan-drop-zone" id="scan-drop-zone"
           ondragover="handleDragOver(event)"
@@ -1357,6 +1357,7 @@ function init() {
     `${QUESTIONS.length} domande · ${chapters.length} capitoli · di Dario Ciancio & Adriana Accetta`;
   document.getElementById('n-max-label').textContent = `/ ${QUESTIONS.length}`;
   document.getElementById('n-slider').max = QUESTIONS.length;
+  document.getElementById('n-slider').value = Math.min(cfg.n, QUESTIONS.length);
 }
 
 // ═══════════════════════════════════════════
@@ -2233,73 +2234,110 @@ function resetScan() {
   showScanArea('scan-upload-area');
 }
 
+// ── Text similarity: Jaccard on word trigrams ──
+function similarity(a, b) {
+  if (!a || !b) return 0;
+  const normalize = s => s.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const words = s => new Set(normalize(s).split(' ').filter(w => w.length > 2));
+  const wa = words(a), wb = words(b);
+  if (!wa.size || !wb.size) return 0;
+  let inter = 0;
+  wa.forEach(w => { if (wb.has(w)) inter++; });
+  return inter / (wa.size + wb.size - inter);
+}
+
+// ── Find best matching question in DB ──
+function findBestMatch(queryText) {
+  let best = null, bestScore = 0;
+  for (const q of QUESTIONS) {
+    const score = similarity(queryText, q.domanda);
+    if (score > bestScore) { bestScore = score; best = q; }
+  }
+  return bestScore > 0.12 ? { q: best, score: bestScore } : null;
+}
+
+// ── Extract questions from OCR text ──
+function extractQuestionsFromText(ocrText) {
+  const lines = ocrText.split('\n').map(l => l.trim()).filter(Boolean);
+  const questions = [];
+  let current = [];
+
+  for (const line of lines) {
+    // New question: starts with number + dot or number + )
+    if (/^\d{1,3}[\.\)]\s+\S/.test(line)) {
+      if (current.length) questions.push(current.join(' ').replace(/^\d+[\.\)]\s*/, '').trim());
+      current = [line];
+    } else if (current.length && !/^[A-Ea-e][\.\)]\s/.test(line)) {
+      // continuation of question (not an option line)
+      if (!/^R[:\s]/.test(line)) current.push(line);
+    } else if (current.length && /^[A-Ea-e][\.\)]\s/.test(line)) {
+      // option line — save question, reset
+      if (current.length) { questions.push(current.join(' ').replace(/^\d+[\.\)]\s*/, '').trim()); current = []; }
+    }
+  }
+  if (current.length) questions.push(current.join(' ').replace(/^\d+[\.\)]\s*/, '').trim());
+
+  return questions.filter(q => q.length > 15 && /\w{5}/.test(q));
+}
+
 async function analyzeImage() {
   if (!scanImageBase64) return;
   showScanArea('scan-analyzing-area');
 
-  // Build a compact question list for the prompt (text only, no answers)
-  const dbSummary = QUESTIONS.map((q, i) =>
-    `[${q.id}] ${q.domanda}`
-  ).join('\n');
-
-  const prompt = `Sei un assistente medico universitario. Hai un database di domande d'esame.
-
-DATABASE (id: testo domanda):
-${dbSummary}
-
-Analizza l'immagine dell'esame cartaceo fornita. Estrai TUTTE le domande visibili nell'immagine.
-Per ogni domanda trovata nell'immagine:
-1. Identifica il testo della domanda
-2. Cerca nel DATABASE quale domanda corrisponde meglio (usa la similarità del testo)
-3. Restituisci l'id della domanda corrispondente dal database, oppure null se non trovata
-
-Rispondi SOLO con un array JSON valido, nessun testo extra:
-[
-  {
-    "num": 1,
-    "testo_immagine": "testo della domanda come appare nell'immagine",
-    "db_id": 5,
-    "confidenza": 0.95
-  },
-  ...
-]
-
-Se la domanda non è nel database, usa db_id: null e confidenza: 0.
-Estrai TUTTE le domande visibili, anche se non le trovi nel database.`;
-
   try {
+    // ── Step 1: OCR with Tesseract.js ──
     document.getElementById('scan-status-text').textContent =
-      'L\'AI sta leggendo le domande dalla foto…';
+      'Lettura del testo dalla foto (OCR)… attendere ~30 secondi';
 
-    const responseText = await window.claude.complete({
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: scanImageMime,
-              data: scanImageBase64
-            }
-          },
-          { type: 'text', text: prompt }
-        ]
-      }]
-    });
-
-    // Parse JSON from response
-    let parsed;
-    try {
-      // Find JSON array in response
-      const match = responseText.match(/\[[\s\S]*\]/);
-      if (!match) throw new Error('Nessun JSON trovato nella risposta');
-      parsed = JSON.parse(match[0]);
-    } catch(parseErr) {
-      throw new Error('Impossibile interpretare la risposta AI. Riprova con una foto più nitida.');
+    // Dynamically load Tesseract
+    if (!window.Tesseract) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/tesseract.js@5.1.0/dist/tesseract.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
     }
 
-    renderScanResults(parsed);
+    const imageDataUrl = 'data:' + scanImageMime + ';base64,' + scanImageBase64;
+
+    const worker = await Tesseract.createWorker('ron+eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pct = Math.round((m.progress || 0) * 100);
+          document.getElementById('scan-status-text').textContent =
+            `OCR in corso: ${pct}%…`;
+        }
+      }
+    });
+
+    const { data: { text: ocrText } } = await worker.recognize(imageDataUrl);
+    await worker.terminate();
+
+    document.getElementById('scan-status-text').textContent =
+      'Ricerca delle domande nel database…';
+
+    // ── Step 2: extract question segments from OCR text ──
+    const extractedQuestions = extractQuestionsFromText(ocrText);
+
+    if (!extractedQuestions.length) {
+      throw new Error('Nessuna domanda rilevata nella foto. Assicurati che il testo sia leggibile e riprova con una foto più nitida.');
+    }
+
+    // ── Step 3: match each extracted question to DB ──
+    const results = extractedQuestions.map((qText, i) => {
+      const match = findBestMatch(qText);
+      return {
+        num: i + 1,
+        testo_immagine: qText,
+        db_id: match ? match.q.id : null,
+        confidenza: match ? match.score : 0
+      };
+    });
+
+    renderScanResults(results);
 
   } catch(err) {
     console.error('Scan error:', err);
