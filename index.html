@@ -2,7 +2,12 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Quiz Medicina">
+<meta name="theme-color" content="#ffffff">
 <title>Quiz Medicina — Grile Licenta</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,8 +60,8 @@
   .header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0 20px;
-    height: 60px;
+    padding: env(safe-area-inset-top) calc(20px + env(safe-area-inset-right)) 0 calc(20px + env(safe-area-inset-left));
+    height: calc(60px + env(safe-area-inset-top));
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -482,7 +487,7 @@
   .quiz-header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 12px 20px;
+    padding: calc(12px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 12px calc(20px + env(safe-area-inset-left));
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -727,7 +732,7 @@
     bottom: 0; left: 0; right: 0;
     background: var(--surface);
     border-top: 1px solid var(--border);
-    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    padding: 8px env(safe-area-inset-right) max(8px, env(safe-area-inset-bottom)) env(safe-area-inset-left);
     z-index: 200;
   }
   @media (max-width: 600px) { .bottom-nav { display: flex; } }
@@ -766,7 +771,7 @@
   @media (max-width: 600px) {
     .home-content, #screen-search .search-content,
     #screen-stats .stats-content, #screen-scan .scan-content {
-      padding-bottom: 80px;
+      padding-bottom: calc(80px + env(safe-area-inset-bottom));
     }
   }
 
@@ -1241,7 +1246,7 @@
         <div class="scan-preview-wrap">
           <img id="scan-img-preview" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Foto esame" style="display:none">
           <div class="scan-preview-actions">
-            <button class="btn btn-primary flex-1" style="justify-content:center" onclick="analyzeImage()">🔍 Analizza con AI</button>
+            <button class="btn btn-primary flex-1" style="justify-content:center" onclick="analyzeImage()">📋 Copia</button>
             <button class="btn btn-secondary" onclick="resetScan()">✕ Cambia foto</button>
           </div>
         </div>
@@ -1372,7 +1377,7 @@ function init() {
   updateAvailCount();
   renderSessions();
   document.getElementById('hero-sub').textContent =
-    `${QUESTIONS.length} domande · ${chapters.length} capitoli · di Dario Ciancio & Adriana Accetta`;
+    `${QUESTIONS.length} domande · ${chapters.length} capitoli · p di pichi`;
   document.getElementById('n-max-label').textContent = `/ ${QUESTIONS.length}`;
   document.getElementById('n-slider').max = QUESTIONS.length;
   document.getElementById('n-slider').value = Math.min(cfg.n, QUESTIONS.length);
