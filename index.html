@@ -397,6 +397,8 @@
   .search-result-q { font-size: 14px; font-weight: 500; line-height: 1.5; margin-bottom: 6px; }
   .search-result-q mark { background: var(--yellow-light); color: var(--text); border-radius: 3px; padding: 0 2px; }
   .search-result-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .search-result-answer { margin-top: 8px; padding: 8px 12px; background: var(--green-light); color: var(--green); border-radius: 8px; font-size: 13px; font-weight: 500; line-height: 1.45; }
+  .search-result-answer mark { background: var(--yellow-light); color: var(--text); border-radius: 3px; padding: 0 2px; }
   .search-empty { text-align: center; padding: 48px 20px; color: var(--text2); font-size: 15px; }
 
   /* ════════════════════════════════════════
@@ -1667,10 +1669,10 @@ function renderQuestion() {
     const cls = isFullCorrect ? 'correct' : 'wrong';
     const icon = isFullCorrect ? '✓' : isPartial ? '◑' : '✗';
     const msg = isFullCorrect ? 'Risposta corretta!' : isPartial ? 'Parzialmente corretto.' : 'Risposta errata.';
-    const correctStr = q.risposte_corrette.map(i => letters[i]).join(', ');
+    const correctStr = q.risposte_corrette.map(i => `<strong>${letters[i]}.</strong> ${escapeHtml(q.opzioni[i])}`).join('<br>');
     fb.innerHTML = `<div class="feedback-box ${cls}">
       <span style="font-size:18px">${icon}</span>
-      <div><strong>${msg}</strong> La risposta corretta è: <strong>${correctStr}</strong></div>
+      <div><strong>${msg}</strong> ${q.risposte_corrette.length > 1 ? 'Le risposte corrette sono' : 'La risposta corretta è'}:<br>${correctStr}</div>
     </div>`;
   }
 
@@ -2167,8 +2169,8 @@ function doSearch() {
       <div class="search-result-meta">
         <span class="badge badge-accent" style="font-size:11px">${item.capitolo}</span>
         <span class="badge badge-gray">${item.multi ? 'Multipla' : 'Singola'}</span>
-        <span class="badge badge-green" style="font-size:11px">✓ ${item.risposte_corrette.map(i=>letters[i]).join(',')}</span>
       </div>
+      ${item.risposte_corrette.map(i => `<div class="search-result-answer">✓ ${highlight(escapeHtml(item.opzioni[i]))}</div>`).join('')}
     `;
     container.appendChild(card);
   });
