@@ -83,11 +83,20 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
+  html {
+    /* niente pan orizzontale su iOS quando si apre la tastiera.
+       'clip' e non 'hidden': non crea uno scroll container, quindi
+       le header con position:sticky continuano a funzionare */
+    overflow-x: clip;
+  }
+
   body {
     font-family: var(--font);
     background: var(--bg);
     color: var(--text);
     min-height: 100dvh;
+    max-width: 100%;
+    overflow-x: clip;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -778,9 +787,13 @@
   .bottom-nav {
     display: none;
     position: fixed;
-    left: 50%;
+    /* centrata senza transform: il box non esce mai dal viewport
+       (left:50% + width:max-content causava scroll orizzontale su iOS) */
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    width: fit-content;
     bottom: calc(10px + env(safe-area-inset-bottom));
-    width: max-content;
     max-width: calc(100% - 24px);
     background: var(--glass-bg);
     -webkit-backdrop-filter: var(--glass-blur);
@@ -790,13 +803,12 @@
     padding: 7px 8px;
     z-index: 200;
     box-shadow: var(--glass-shadow), var(--glass-hi);
-    transform: translateX(-50%);
     transition: transform 0.32s cubic-bezier(0.32,0.72,0,1), opacity 0.25s ease;
     will-change: transform;
   }
   @media (max-width: 600px) { .bottom-nav { display: flex; } }
   .bottom-nav { justify-content: center; gap: 2px; }
-  .bottom-nav.nav-hidden { transform: translateX(-50%) translateY(180%); opacity: 0; }
+  .bottom-nav.nav-hidden { transform: translateY(180%); opacity: 0; }
   .bottom-nav.nav-gone { display: none !important; }
   .nav-item {
     position: relative;
