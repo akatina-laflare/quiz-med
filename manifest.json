@@ -1,0 +1,17 @@
+{
+  "name": "Quiz Medicina — Grile Licenta",
+  "short_name": "Quiz Medicina",
+  "description": "Banca dati completa per l'esame di licenza in Medicina",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0b7fa8",
+  "lang": "ro",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
