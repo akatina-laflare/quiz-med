@@ -936,6 +936,52 @@
     display: flex; gap: 8px; padding: 10px;
     background: var(--surface);
     border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  /* ── Miniature delle foto in coda ── */
+  .scan-thumbs-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; padding: 12px 14px 0;
+    font-size: 14px; font-weight: 600; color: var(--text);
+  }
+  .scan-thumbs-hint { font-size: 11px; font-weight: 400; color: var(--text3); }
+  .scan-thumbs {
+    display: grid; gap: 8px; padding: 10px 14px 4px;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  }
+  .scan-thumb {
+    position: relative; aspect-ratio: 3/4;
+    border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border); background: var(--bg3);
+  }
+  .scan-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; max-height: none; }
+  .scan-thumb-num {
+    position: absolute; left: 4px; bottom: 4px;
+    background: oklch(18% 0.04 250 / 0.72); color: #fff;
+    font-size: 11px; font-weight: 700; font-family: var(--mono);
+    padding: 1px 6px; border-radius: 6px;
+  }
+  .scan-thumb-x {
+    position: absolute; top: 3px; right: 3px;
+    width: 24px; height: 24px; border: none; cursor: pointer;
+    border-radius: 50%; background: oklch(18% 0.04 250 / 0.72); color: #fff;
+    font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .scan-thumb-x:hover { background: var(--red); }
+  .scan-warn {
+    background: var(--yellow-light);
+    color: oklch(45% 0.12 85);
+    border: 1px solid oklch(85% 0.09 85);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px; font-size: 13px; line-height: 1.45;
+    margin-bottom: 12px;
+  }
+  .scan-q-foto {
+    margin-left: auto; flex-shrink: 0;
+    font-size: 11px; font-weight: 600; color: var(--text3);
+    background: var(--bg2); border-radius: 6px; padding: 2px 7px;
+    white-space: nowrap;
   }
 
   .scan-analyzing {
@@ -1007,6 +1053,13 @@
   .scan-match-found .match-answer {
     display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   }
+  /* una risposta corretta per riga: pastiglia con la lettera + testo intero */
+  .match-answer { display: flex; flex-direction: column; gap: 6px; }
+  .answer-row {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: color-mix(in oklab, var(--green) 12%, transparent);
+    border-radius: 8px; padding: 6px 8px;
+  }
   .answer-chip {
     display: inline-flex; align-items: center; gap: 5px;
     background: var(--green); color: #fff;
@@ -1014,8 +1067,12 @@
     padding: 4px 12px; border-radius: 20px;
     font-family: var(--mono);
   }
+  /* var(--text) e non un verde fisso: in tema scuro un colore scuro fisso
+     finiva su sfondo scuro e il testo della risposta spariva del tutto,
+     lasciando visibili solo le lettere A/B/C/D. */
   .answer-chip-text {
-    font-size: 12px; color: oklch(35% 0.12 155); font-weight: 500;
+    font-size: 13px; color: var(--text); font-weight: 500;
+    line-height: 1.45; flex: 1; min-width: 0;
   }
 
   .scan-match-notfound {
@@ -1338,15 +1395,15 @@
         </div>
         <div style="font-size:20px;font-weight:700;margin-bottom:4px">Scansiona l'esame</div>
         <div style="font-size:14px;color:var(--text2);margin-bottom:16px;line-height:1.5">
-          Scatta una foto alla pagina dell'esame cartaceo, oppure scegli un'immagine che hai già salvato. Il sistema legge il testo con OCR e trova automaticamente le risposte nel database. <strong>Funziona offline, senza internet.</strong>
+          Scatta una foto alla pagina dell'esame cartaceo, oppure scegline dalla galleria: puoi caricarne <strong>più di una insieme</strong>. Il sistema legge il testo con OCR e trova automaticamente le risposte nel database. <strong>Funziona offline, senza internet.</strong>
         </div>
         <div class="scan-drop-zone" id="scan-drop-zone"
           ondragover="handleDragOver(event)"
           ondragleave="handleDragLeave(event)"
           ondrop="handleDrop(event)">
           <div class="scan-drop-icon">📷</div>
-          <div class="scan-drop-title">Scatta o scegli una foto</div>
-          <div class="scan-drop-sub">JPG, PNG, HEIC · su computer puoi trascinarla qui</div>
+          <div class="scan-drop-title">Scatta o scegli le foto</div>
+          <div class="scan-drop-sub">JPG, PNG, HEIC · fino a 10 foto · su computer puoi trascinarle qui</div>
           <div class="scan-source-btns">
             <button type="button" class="btn btn-primary scan-source-btn" onclick="pickScanSource('camera')">
               <span class="scan-source-ico">📸</span> Scatta foto
@@ -1358,16 +1415,21 @@
         </div>
         <!-- due input separati: 'capture' apre la fotocamera, senza apre la galleria -->
         <input type="file" accept="image/*" capture="environment" id="scan-file-camera" class="sr-only-file" onchange="handleScanFile(event)">
-        <input type="file" accept="image/*" id="scan-file-input" class="sr-only-file" onchange="handleScanFile(event)">
+        <input type="file" accept="image/*" multiple id="scan-file-input" class="sr-only-file" onchange="handleScanFile(event)">
       </div>
 
       <!-- Preview + analyze -->
       <div id="scan-preview-area" style="display:none">
         <div class="scan-preview-wrap">
-          <img id="scan-img-preview" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Foto esame" style="display:none">
+          <div class="scan-thumbs-head">
+            <span id="scan-count">1 foto pronta</span>
+            <span class="scan-thumbs-hint">tocca ✕ per togliere una foto</span>
+          </div>
+          <div id="scan-thumbs" class="scan-thumbs"></div>
           <div class="scan-preview-actions">
-            <button class="btn btn-primary flex-1" style="justify-content:center" onclick="analyzeImage()">📋 Copia</button>
-            <button class="btn btn-secondary" onclick="resetScan()">✕ Cambia foto</button>
+            <button class="btn btn-primary flex-1" id="scan-analyze-btn" style="justify-content:center" onclick="analyzeImage()">📋 Analizza</button>
+            <button class="btn btn-secondary" id="scan-add-more" onclick="pickScanSource('gallery')">+ Aggiungi</button>
+            <button class="btn btn-secondary" onclick="resetScan()">✕ Annulla</button>
           </div>
         </div>
       </div>
@@ -2353,8 +2415,8 @@ function exportCSV() {
 // SCAN / OCR — VERSION 2 (FAST + ROBUST)
 // ═══════════════════════════════════════════
 
-let scanImageBase64 = null;
-let scanImageMime = 'image/jpeg';
+// Foto in attesa di analisi: [{ dataUrl, nome }, …] — anche più di una
+let scanPhotos = [];
 let tesseractWorker = null;
 let tesseractLoading = null;
 let tesseractReady = false;
@@ -2435,8 +2497,8 @@ function handleDragLeave(e) {
 function handleDrop(e) {
   e.preventDefault();
   document.getElementById('scan-drop-zone').classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) loadScanFile(file);
+  const files = Array.from(e.dataTransfer.files || []).filter(f => f.type && f.type.startsWith('image/'));
+  if (files.length) addScanFiles(files);
 }
 // 'camera' = scatta ora, 'gallery' = scegli una foto già salvata
 function pickScanSource(source) {
@@ -2446,36 +2508,85 @@ function pickScanSource(source) {
   inp.value = '';           // permette di riselezionare la stessa foto
   inp.click();
 }
+const MAX_SCAN_PHOTOS = 10;
+
 function handleScanFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (!file.type || !file.type.startsWith('image/')) {
-    alert('Seleziona un file immagine (JPG, PNG o HEIC).');
-    return;
-  }
-  loadScanFile(file);
+  const picked = Array.from(e.target.files || []).filter(f => f.type && f.type.startsWith('image/'));
+  if (!picked.length) return;
+  addScanFiles(picked);
 }
-function loadScanFile(file) {
-  scanImageMime = file.type || 'image/jpeg';
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    scanImageBase64 = dataUrl.split(',')[1];
-    const img = document.getElementById('scan-img-preview');
-    img.src = dataUrl;
-    img.style.display = 'block';
+
+// Le foto si accumulano: puoi scattarne una, poi aggiungerne altre dalla galleria.
+async function addScanFiles(files) {
+  const spazio = MAX_SCAN_PHOTOS - scanPhotos.length;
+  if (spazio <= 0) { alert('Hai già ' + MAX_SCAN_PHOTOS + ' foto: togline una per aggiungerne altre.'); return; }
+  const daLeggere = files.slice(0, spazio);
+  const troppe = files.length - daLeggere.length;
+
+  const leggi = (file) => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = ev => resolve(ev.target.result);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+
+  // UNA ALLA VOLTA: con 10 letture in parallelo il telefono ne perdeva
+  // qualcuna in silenzio. Così è affidabile e consuma meno memoria.
+  let falliti = 0;
+  for (const file of daLeggere) {
+    const dataUrl = await leggi(file);
+    if (!dataUrl) { falliti++; continue; }
+    scanPhotos.push({ dataUrl: dataUrl, nome: file.name || 'foto' });
+    renderScanThumbs();                 // le miniature compaiono man mano
     showScanArea('scan-preview-area');
-    // Start Tesseract preload now if not already (so by the time user clicks "Analizza", it's ready)
-    preloadTesseract();
-  };
-  reader.readAsDataURL(file);
+  }
+
+  if (!scanPhotos.length) { showScanArea('scan-upload-area'); }
+  else preloadTesseract();              // si scalda mentre guardi le miniature
+
+  const avvisi = [];
+  if (troppe > 0) avvisi.push('Massimo ' + MAX_SCAN_PHOTOS + ' foto: ho preso le prime ' + daLeggere.length + '.');
+  if (falliti > 0) avvisi.push(falliti === 1 ? 'Una foto non si è aperta e l\'ho saltata.' : falliti + ' foto non si sono aperte e le ho saltate.');
+  if (avvisi.length) alert(avvisi.join('\n'));
 }
+
+function renderScanThumbs() {
+  const grid = document.getElementById('scan-thumbs');
+  if (!grid) return;
+  grid.innerHTML = '';
+  scanPhotos.forEach((p, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'scan-thumb';
+    cell.innerHTML =
+      '<img src="' + p.dataUrl + '" alt="Foto ' + (i+1) + '">' +
+      '<span class="scan-thumb-num">' + (i+1) + '</span>' +
+      '<button type="button" class="scan-thumb-x" aria-label="Rimuovi foto ' + (i+1) + '">✕</button>';
+    cell.querySelector('.scan-thumb-x').onclick = () => removeScanPhoto(i);
+    grid.appendChild(cell);
+  });
+  const n = scanPhotos.length;
+  const cnt = document.getElementById('scan-count');
+  if (cnt) cnt.textContent = n === 1 ? '1 foto pronta' : n + ' foto pronte';
+  const btn = document.getElementById('scan-analyze-btn');
+  if (btn) btn.textContent = n > 1 ? '📋 Analizza le ' + n + ' foto' : '📋 Analizza';
+  const add = document.getElementById('scan-add-more');
+  if (add) add.style.display = n >= MAX_SCAN_PHOTOS ? 'none' : '';
+}
+
+function removeScanPhoto(i) {
+  scanPhotos.splice(i, 1);
+  if (!scanPhotos.length) { resetScan(); return; }
+  renderScanThumbs();
+}
+
 function resetScan() {
-  scanImageBase64 = null;
+  scanPhotos = [];
   ['scan-file-input', 'scan-file-camera'].forEach(id => {
     const inp = document.getElementById(id);
     if (inp) inp.value = '';
   });
+  const grid = document.getElementById('scan-thumbs');
+  if (grid) grid.innerHTML = '';
   showScanArea('scan-upload-area');
 }
 
@@ -2879,54 +2990,60 @@ function isLikelyRealText(text) {
 // MAIN ANALYZE
 // ═══════════════════════════════════════════
 async function analyzeImage() {
-  if (!scanImageBase64) return;
+  if (!scanPhotos.length) return;
   showScanArea('scan-analyzing-area');
   const status = document.getElementById('scan-status-text');
   status.textContent = 'Preparazione…';
 
+  const errMsg = 'Non sono riuscito a leggere testo coerente dalla foto. Suggerimenti: (1) fotografa la pagina cartacea, non lo schermo; (2) tieni il telefono dritto e parallelo al foglio; (3) usa luce naturale o diffusa, evita riflessi e flash diretti; (4) avvicinati così che la pagina riempia l\'inquadratura.';
+
   try {
-    // Step 1: ensure Tesseract ready
     if (!tesseractReady) {
       status.textContent = 'Caricamento OCR (solo la prima volta, ~10-30s)…';
       await preloadTesseract();
       if (!tesseractWorker) throw new Error('Impossibile caricare il motore OCR. Controlla la connessione internet.');
     }
 
-    // Step 2: preprocess image (denoise+sharpen+contrast)
-    status.textContent = 'Ottimizzazione immagine…';
-    const t0 = performance.now();
-    const rawDataUrl = 'data:' + scanImageMime + ';base64,' + scanImageBase64;
-    const cleanDataUrl = await preprocessImage(rawDataUrl);
-    const prepMs = Math.round(performance.now() - t0);
+    const tot = scanPhotos.length;
+    const results = [];
+    const testiOcr = [];
+    const fotoIllegibili = [];
 
-    // Step 3: OCR
-    status.textContent = 'Lettura del testo (OCR)…';
-    const t1 = performance.now();
-    const { data: { text: ocrText } } = await tesseractWorker.recognize(cleanDataUrl);
-    const ocrMs = Math.round(performance.now() - t1);
-    console.log(`[scan] preprocess: ${prepMs}ms, OCR: ${ocrMs}ms, chars: ${ocrText.length}`);
-    console.log('[scan] testo OCR:\n', ocrText);
+    for (let p = 0; p < tot; p++) {
+      const etichetta = tot > 1 ? `Foto ${p+1} di ${tot} — ` : '';
 
-    // Step 4: reject the photo if the WHOLE OCR text is garbage (e.g. photo of a screen)
-    status.textContent = 'Ricerca nel database…';
-    const errMsg = 'Non sono riuscito a leggere testo coerente dalla foto. Suggerimenti: (1) fotografa la pagina cartacea, non lo schermo; (2) tieni il telefono dritto e parallelo al foglio; (3) usa luce naturale o diffusa, evita riflessi e flash diretti; (4) avvicinati così che la pagina riempia l\'inquadratura.';
-    if (!isLikelyRealText(ocrText)) throw new Error(errMsg);
+      status.textContent = etichetta + 'ottimizzazione immagine…';
+      const t0 = performance.now();
+      const cleanDataUrl = await preprocessImage(scanPhotos[p].dataUrl);
+      const prepMs = Math.round(performance.now() - t0);
 
-    // Extract candidate questions (short legit questions are kept — matcher decides)
-    const extracted = extractQuestionsFromText(ocrText);
-    if (!extracted.length) throw new Error(errMsg);
+      status.textContent = etichetta + 'lettura del testo (OCR)…';
+      const t1 = performance.now();
+      const { data: { text: ocrText } } = await tesseractWorker.recognize(cleanDataUrl);
+      const ocrMs = Math.round(performance.now() - t1);
+      console.log(`[scan] foto ${p+1}/${tot}: preprocess ${prepMs}ms, OCR ${ocrMs}ms, ${ocrText.length} caratteri`);
+      testiOcr.push(ocrText);
 
-    // Step 5: match each (always returns top 3)
-    const t2 = performance.now();
-    const results = extracted.map((qq, i) => ({
-      num: i + 1,
-      testo_immagine: qq.stem,
-      candidates: findTopMatches(qq.stem, qq.full, 3),
-    }));
-    const matchMs = Math.round(performance.now() - t2);
-    console.log(`[scan] match: ${matchMs}ms`);
+      // una foto illeggibile non deve far fallire tutte le altre
+      if (!isLikelyRealText(ocrText)) { fotoIllegibili.push(p+1); continue; }
+      const extracted = extractQuestionsFromText(ocrText);
+      if (!extracted.length) { fotoIllegibili.push(p+1); continue; }
 
-    renderScanResults(results, ocrText);
+      status.textContent = etichetta + 'ricerca nel database…';
+      extracted.forEach(qq => {
+        results.push({
+          num: results.length + 1,
+          foto: tot > 1 ? p + 1 : null,
+          testo_immagine: qq.stem,
+          candidates: findTopMatches(qq.stem, qq.full, 3),
+        });
+      });
+    }
+
+    // nessuna foto leggibile -> errore vero
+    if (!results.length) throw new Error(errMsg);
+
+    renderScanResults(results, testiOcr.join('\n\n──────────\n\n'), fotoIllegibili, tot);
   } catch(err) {
     console.error('[scan] errore:', err);
     document.getElementById('scan-error-msg').textContent = err.message || 'Errore sconosciuto.';
@@ -2941,7 +3058,7 @@ function escapeHtml(s) {
   return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function renderScanResults(items, rawOcrText) {
+function renderScanResults(items, rawOcrText, fotoIllegibili, totFoto) {
   // Soglie calibrate sui dati reali (match su titolo + opzioni):
   //   - testo che NON e' nel database  -> non supera 0.25
   //   - match corretto con OCR pessimo -> non scende sotto 0.58
@@ -2957,12 +3074,24 @@ function renderScanResults(items, rawOcrText) {
     else none++;
   });
 
-  document.getElementById('scan-results-title').textContent = `${items.length} domanda/e analizzata/e`;
+  const nFoto = totFoto || 1;
+  document.getElementById('scan-results-title').textContent =
+    (nFoto > 1 ? `${nFoto} foto · ` : '') + `${items.length} domanda/e analizzata/e`;
   document.getElementById('scan-results-sub').textContent =
     `${strong} match sicuri · ${weak} probabili · ${none} non trovate`;
 
   const list = document.getElementById('scan-questions-list');
   list.innerHTML = '';
+
+  // avviso onesto: quali foto non è riuscito a leggere
+  if (fotoIllegibili && fotoIllegibili.length) {
+    const w = document.createElement('div');
+    w.className = 'scan-warn';
+    w.textContent = fotoIllegibili.length === 1
+      ? `⚠️ La foto ${fotoIllegibili[0]} non era leggibile: rifalla più da vicino, con luce diffusa.`
+      : `⚠️ Le foto ${fotoIllegibili.join(', ')} non erano leggibili: rifalle più da vicino, con luce diffusa.`;
+    list.appendChild(w);
+  }
 
   items.forEach((item, idx) => {
     const card = document.createElement('div');
@@ -3001,10 +3130,12 @@ function renderScanResults(items, rawOcrText) {
       </div>`;
     }
 
+    const tagFoto = item.foto ? `<span class="scan-q-foto">📷 foto ${item.foto}</span>` : '';
     card.innerHTML = `
       <div class="scan-q-header">
         <span class="scan-q-num">Q${item.num || idx+1}</span>
         <div class="scan-q-text">${escapeHtml(item.testo_immagine || '(testo non leggibile)')}</div>
+        ${tagFoto}
       </div>
       <div class="scan-match">${matchHtml}</div>
     `;
@@ -3024,8 +3155,10 @@ function renderMatchCard(dbQ, score, label, klass) {
       <div class="match-q">${escapeHtml(dbQ.domanda)}</div>
       <div class="match-answer">
         ${correctAnswers.map(a => `
-          <span class="answer-chip">✓ ${a.letter}</span>
-          <span class="answer-chip-text">${escapeHtml(a.text)}</span>
+          <div class="answer-row">
+            <span class="answer-chip">✓ ${a.letter}</span>
+            <span class="answer-chip-text">${escapeHtml(a.text)}</span>
+          </div>
         `).join('')}
       </div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -3052,8 +3185,10 @@ function renderCandidate(c, ci) {
       <div style="font-size:13px;font-weight:500;margin-bottom:6px">${escapeHtml(dbQ.domanda)}</div>
       <div class="match-answer">
         ${correctAnswers.map(a => `
-          <span class="answer-chip">✓ ${a.letter}</span>
-          <span class="answer-chip-text" style="font-size:12px">${escapeHtml(a.text)}</span>
+          <div class="answer-row">
+            <span class="answer-chip">✓ ${a.letter}</span>
+            <span class="answer-chip-text">${escapeHtml(a.text)}</span>
+          </div>
         `).join('')}
       </div>
     </div>`;
