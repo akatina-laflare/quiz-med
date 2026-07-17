@@ -5,7 +5,7 @@
      - font  : cache-first  (Google Fonts salvati al primo avvio online)
      - icone : cache-first
 */
-const VERSION = 'quiz-med-v1';
+const VERSION = 'quiz-med-v2';
 const CORE = [
   './',
   './index.html',
@@ -14,11 +14,25 @@ const CORE = [
   './icon-192.png',
   './icon-512.png'
 ];
+// OCR: serve per far funzionare "Scansiona" senza connessione (~9 MB).
+// Scaricati all'installazione; il core non-SIMD (per device vecchi) viene
+// salvato al volo solo se quel device lo richiede davvero.
+const OCR = [
+  './tess/tesseract.min.js',
+  './tess/worker.min.js',
+  './tess/tesseract-core-simd-lstm.wasm.js',
+  './tess/ron.traineddata.gz'
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(VERSION)
-      .then((c) => Promise.allSettled(CORE.map((u) => c.add(u))))
+      .then(async (c) => {
+        // prima l'app: dev'essere pronta subito
+        await Promise.allSettled(CORE.map((u) => c.add(u)));
+        // poi l'OCR: pesante, se fallisce non blocca l'installazione
+        await Promise.allSettled(OCR.map((u) => c.add(u)));
+      })
       .then(() => self.skipWaiting())
   );
 });

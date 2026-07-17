@@ -887,23 +887,38 @@
   .scan-drop-zone {
     border: 2.5px dashed var(--border);
     border-radius: var(--radius);
-    padding: 40px 20px;
+    padding: 32px 20px;
     text-align: center;
-    cursor: pointer;
     transition: all var(--transition);
     background: var(--surface);
     position: relative;
   }
-  .scan-drop-zone:hover, .scan-drop-zone.drag-over {
+  .scan-drop-zone.drag-over {
     border-color: var(--accent);
     background: var(--accent-light);
   }
-  .scan-drop-zone input[type=file] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  /* input file nascosti: si aprono dai pulsanti qui sotto */
+  .sr-only-file {
+    position: absolute; width: 1px; height: 1px;
+    opacity: 0; pointer-events: none; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap;
   }
   .scan-drop-icon { font-size: 48px; margin-bottom: 12px; }
   .scan-drop-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
   .scan-drop-sub { font-size: 13px; color: var(--text2); }
+  .scan-source-btns {
+    display: flex; gap: 10px; justify-content: center;
+    margin-top: 20px; flex-wrap: wrap;
+  }
+  .scan-source-btn {
+    flex: 1 1 0; min-width: 140px; max-width: 220px;
+    justify-content: center;
+  }
+  .scan-source-ico { font-size: 17px; line-height: 1; }
+  @media (max-width: 380px) {
+    .scan-source-btns { flex-direction: column; }
+    .scan-source-btn { max-width: none; }
+  }
 
   .scan-preview-wrap {
     position: relative;
@@ -1323,17 +1338,27 @@
         </div>
         <div style="font-size:20px;font-weight:700;margin-bottom:4px">Scansiona l'esame</div>
         <div style="font-size:14px;color:var(--text2);margin-bottom:16px;line-height:1.5">
-          Fai una foto alla pagina dell'esame cartaceo. Il sistema legge il testo con OCR e trova automaticamente le risposte nel database. <strong>Funziona offline, senza internet.</strong>
+          Scatta una foto alla pagina dell'esame cartaceo, oppure scegli un'immagine che hai già salvato. Il sistema legge il testo con OCR e trova automaticamente le risposte nel database. <strong>Funziona offline, senza internet.</strong>
         </div>
         <div class="scan-drop-zone" id="scan-drop-zone"
           ondragover="handleDragOver(event)"
           ondragleave="handleDragLeave(event)"
           ondrop="handleDrop(event)">
-          <input type="file" accept="image/*" capture="environment" id="scan-file-input" onchange="handleScanFile(event)">
           <div class="scan-drop-icon">📷</div>
-          <div class="scan-drop-title">Carica o scatta una foto</div>
-          <div class="scan-drop-sub">JPG, PNG, HEIC · trascina qui o clicca per scegliere</div>
+          <div class="scan-drop-title">Scatta o scegli una foto</div>
+          <div class="scan-drop-sub">JPG, PNG, HEIC · su computer puoi trascinarla qui</div>
+          <div class="scan-source-btns">
+            <button type="button" class="btn btn-primary scan-source-btn" onclick="pickScanSource('camera')">
+              <span class="scan-source-ico">📸</span> Scatta foto
+            </button>
+            <button type="button" class="btn btn-secondary scan-source-btn" onclick="pickScanSource('gallery')">
+              <span class="scan-source-ico">🖼️</span> Dalla galleria
+            </button>
+          </div>
         </div>
+        <!-- due input separati: 'capture' apre la fotocamera, senza apre la galleria -->
+        <input type="file" accept="image/*" capture="environment" id="scan-file-camera" class="sr-only-file" onchange="handleScanFile(event)">
+        <input type="file" accept="image/*" id="scan-file-input" class="sr-only-file" onchange="handleScanFile(event)">
       </div>
 
       <!-- Preview + analyze -->
@@ -2336,6 +2361,10 @@ let tesseractReady = false;
 
 const TESS_VERSION = '5.1.0';
 const TESS_LANG = 'ron'; // Romanian only — much faster than ron+eng
+// Tutti i file dell'OCR sono in locale (cartella ./tess/) così la scansione
+// funziona anche senza connessione. URL assoluti: dentro il worker i path
+// relativi verrebbero risolti rispetto al worker stesso.
+const TESS_BASE = new URL('tess/', location.href).href;
 
 function showScanArea(id) {
   ['scan-upload-area','scan-preview-area','scan-analyzing-area','scan-results-area','scan-error-area']
@@ -2350,12 +2379,17 @@ async function preloadTesseract() {
       if (!window.Tesseract) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
-          s.src = `https://unpkg.com/tesseract.js@${TESS_VERSION}/dist/tesseract.min.js`;
+          s.src = TESS_BASE + 'tesseract.min.js';
           s.onload = resolve; s.onerror = reject;
           document.head.appendChild(s);
         });
       }
       tesseractWorker = await Tesseract.createWorker(TESS_LANG, 1, {
+        workerPath: TESS_BASE + 'worker.min.js',
+        corePath: TESS_BASE,                    // cartella: sceglie da sé simd / non-simd
+        langPath: TESS_BASE.replace(/\/$/, ''), // ci aggiunge lui /ron.traineddata.gz
+        gzip: true,
+        workerBlobURL: false,
         logger: m => updateScanStatus(m)
       });
       // PSM 6 = uniform block of text (best for printed exam pages)
@@ -2404,9 +2438,22 @@ function handleDrop(e) {
   const file = e.dataTransfer.files[0];
   if (file && file.type.startsWith('image/')) loadScanFile(file);
 }
+// 'camera' = scatta ora, 'gallery' = scegli una foto già salvata
+function pickScanSource(source) {
+  const id = source === 'camera' ? 'scan-file-camera' : 'scan-file-input';
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  inp.value = '';           // permette di riselezionare la stessa foto
+  inp.click();
+}
 function handleScanFile(e) {
   const file = e.target.files[0];
-  if (file) loadScanFile(file);
+  if (!file) return;
+  if (!file.type || !file.type.startsWith('image/')) {
+    alert('Seleziona un file immagine (JPG, PNG o HEIC).');
+    return;
+  }
+  loadScanFile(file);
 }
 function loadScanFile(file) {
   scanImageMime = file.type || 'image/jpeg';
@@ -2425,8 +2472,10 @@ function loadScanFile(file) {
 }
 function resetScan() {
   scanImageBase64 = null;
-  const inp = document.getElementById('scan-file-input');
-  if (inp) inp.value = '';
+  ['scan-file-input', 'scan-file-camera'].forEach(id => {
+    const inp = document.getElementById(id);
+    if (inp) inp.value = '';
+  });
   showScanArea('scan-upload-area');
 }
 
