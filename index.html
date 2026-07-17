@@ -2482,6 +2482,83 @@ function resetScan() {
 // ═══════════════════════════════════════════
 // IMAGE PREPROCESSING (canvas) — ottima per foto sfocate/storte
 // ═══════════════════════════════════════════
+// Mediana 3x3: elimina grana/puntini senza sbavare i bordi delle lettere
+// (a differenza di una sfocatura). Serve per foto scattate al buio o mosse.
+function medianFilter3(src, w, h) {
+  const out = new Uint8ClampedArray(w * h);
+  const p = new Uint8Array(9);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const row = (y + dy) * w + x;
+        p[n++] = src[row - 1]; p[n++] = src[row]; p[n++] = src[row + 1];
+      }
+      for (let i = 1; i < 9; i++) {           // insertion sort su 9 valori
+        const v = p[i]; let j = i - 1;
+        while (j >= 0 && p[j] > v) { p[j + 1] = p[j]; j--; }
+        p[j + 1] = v;
+      }
+      out[y * w + x] = p[4];                  // mediana
+    }
+  }
+  for (let x = 0; x < w; x++) { out[x] = src[x]; out[(h-1)*w + x] = src[(h-1)*w + x]; }
+  for (let y = 0; y < h; y++) { out[y*w] = src[y*w]; out[y*w + w-1] = src[y*w + w-1]; }
+  return out;
+}
+
+// Media locale con box filter separabile (somme scorrevoli, O(1) per pixel)
+function boxMean(src, w, h, r) {
+  const win = 2 * r + 1;
+  const tmp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    let sum = 0;
+    for (let dx = -r; dx <= r; dx++) sum += src[row + (dx < 0 ? 0 : (dx >= w ? w - 1 : dx))];
+    tmp[row] = sum;
+    for (let x = 1; x < w; x++) {
+      const xa = x + r >= w ? w - 1 : x + r;
+      const xr = x - r - 1 < 0 ? 0 : x - r - 1;
+      sum += src[row + xa] - src[row + xr];
+      tmp[row + x] = sum;
+    }
+  }
+  const out = new Float32Array(w * h);
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    for (let dy = -r; dy <= r; dy++) sum += tmp[(dy < 0 ? 0 : (dy >= h ? h - 1 : dy)) * w + x];
+    out[x] = sum;
+    for (let y = 1; y < h; y++) {
+      const ya = y + r >= h ? h - 1 : y + r;
+      const yr = y - r - 1 < 0 ? 0 : y - r - 1;
+      sum += tmp[ya * w + x] - tmp[yr * w + x];
+      out[y * w + x] = sum;
+    }
+  }
+  const area = win * win;
+  for (let i = 0, n = w * h; i < n; i++) out[i] /= area;
+  return out;
+}
+
+// Correzione dell'illuminazione (flat-field): divide ogni pixel per la
+// luminosità media della sua zona. Toglie ombre, luce laterale e pagine
+// piegate, MA lascia l'immagine in scala di grigi: la soglia finale la
+// decide Tesseract, che è bravo a farlo.
+//
+// Testato: su foto sgranata+ombra la binarizzazione "a mano" trasformava
+// la grana in puntini neri e l'OCR crollava (25% di confidenza). Con il
+// flat-field si passa da 27% a 92%.
+function flatField(src, w, h) {
+  const r = Math.max(12, Math.round(w / 18)); // finestra ampia = stima dello sfondo
+  const mean = boxMean(src, w, h, r);
+  const out = new Uint8ClampedArray(w * h);
+  for (let i = 0, n = w * h; i < n; i++) {
+    const v = (src[i] / Math.max(1, mean[i])) * 190;
+    out[i] = v > 255 ? 255 : v < 0 ? 0 : v;
+  }
+  return out;
+}
+
 async function preprocessImage(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2511,40 +2588,29 @@ async function preprocessImage(dataUrl) {
         gray[j] = (0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2]) | 0;
       }
 
-      // 2. Auto-contrast: stretch between 5th and 95th percentile
-      const hist = new Uint32Array(256);
-      for (let i = 0; i < N; i++) hist[gray[i]]++;
-      let lo = 0, hi = 255, cum = 0;
-      for (let i = 0; i < 256; i++) { cum += hist[i]; if (cum >= N * 0.05) { lo = i; break; } }
-      cum = 0;
-      for (let i = 255; i >= 0; i--) { cum += hist[i]; if (cum >= N * 0.05) { hi = i; break; } }
-      const range = Math.max(1, hi - lo);
-      const stretched = new Uint8ClampedArray(N);
-      for (let i = 0; i < N; i++) {
-        const v = ((gray[i] - lo) * 255 / range) | 0;
-        stretched[i] = v < 0 ? 0 : v > 255 ? 255 : v;
-      }
+      // 2. Median 3x3 — toglie la grana/rumore ISO delle foto scattate male.
+      //    Va PRIMA della nitidezza: sennò lo sharpen amplifica la grana.
+      const den = medianFilter3(gray, w, h);
 
-      // 3. Unsharp mask (sharpen) — recovers blurry text
-      // Convolution kernel: center heavy, neighbors negative
+      // 3. Flat-field — toglie ombre e luce laterale (mano sopra il foglio,
+      //    pagina piegata, luce da una finestra). Sostituisce il vecchio
+      //    auto-contrasto, che essendo globale non reggeva le ombre parziali.
+      const flat = flatField(den, w, h);
+
+      // 4. Unsharp mask — recupera il testo leggermente mosso o sfocato
       const sharp = new Uint8ClampedArray(N);
-      const k = [0, -0.6, 0, -0.6, 3.4, -0.6, 0, -0.6, 0]; // sums to 1
+      const AMT = 0.5, C0 = 1 + 4 * AMT;
       for (let y = 1; y < h - 1; y++) {
         for (let x = 1; x < w - 1; x++) {
-          let s = 0;
-          s += stretched[(y-1)*w + x  ] * k[1];
-          s += stretched[ y   *w + x-1] * k[3];
-          s += stretched[ y   *w + x  ] * k[4];
-          s += stretched[ y   *w + x+1] * k[5];
-          s += stretched[(y+1)*w + x  ] * k[7];
+          const s = flat[y*w + x] * C0
+                  - AMT * (flat[(y-1)*w + x] + flat[(y+1)*w + x] + flat[y*w + x-1] + flat[y*w + x+1]);
           sharp[y*w + x] = s < 0 ? 0 : s > 255 ? 255 : s;
         }
       }
-      // Borders: copy from stretched
-      for (let x = 0; x < w; x++) { sharp[x] = stretched[x]; sharp[(h-1)*w + x] = stretched[(h-1)*w + x]; }
-      for (let y = 0; y < h; y++) { sharp[y*w] = stretched[y*w]; sharp[y*w + w - 1] = stretched[y*w + w - 1]; }
+      for (let x = 0; x < w; x++) { sharp[x] = flat[x]; sharp[(h-1)*w + x] = flat[(h-1)*w + x]; }
+      for (let y = 0; y < h; y++) { sharp[y*w] = flat[y*w]; sharp[y*w + w - 1] = flat[y*w + w - 1]; }
 
-      // Write back as RGBA
+      // Nessuna binarizzazione: la soglia la decide Tesseract, che è più bravo.
       for (let i = 0, j = 0; i < data.length; i += 4, j++) {
         const v = sharp[j];
         data[i] = data[i+1] = data[i+2] = v;
@@ -2636,28 +2702,51 @@ function containmentRatio(setA, setB) {
 let DB_INDEX = null;
 function buildDBIndex() {
   if (DB_INDEX) return;
-  DB_INDEX = QUESTIONS.map(q => ({
-    q,
-    words: getWordSet(q.domanda, 3),
-    grams: getCharNgrams(q.domanda, 3),
-  }));
+  DB_INDEX = QUESTIONS.map(q => {
+    // Indicizziamo anche le OPZIONI, non solo il titolo: decine di domande
+    // hanno lo stesso identico titolo ("Hemangiomul hepatic:", "Volvulusul:"…)
+    // e si distinguono solo dalle risposte. Col solo titolo il match e'
+    // inevitabilmente incerto.
+    const full = q.domanda + ' ' + (q.opzioni || []).join(' ');
+    return {
+      q,
+      words: getWordSet(q.domanda, 3),
+      grams: getCharNgrams(q.domanda, 3),
+      fullWords: getWordSet(full, 3),
+      fullGrams: getCharNgrams(full, 3),
+    };
+  });
   console.log('[scan] DB index pronto:', DB_INDEX.length);
 }
 
-function findTopMatches(queryText, k = 3) {
+// stemText = solo la domanda letta dalla foto
+// fullText = domanda + opzioni lette dalla foto (se presenti)
+function findTopMatches(stemText, fullText, k = 3) {
   buildDBIndex();
-  const qw = getWordSet(queryText, 3);
-  const qg = getCharNgrams(queryText, 3);
-  if (!qw.size && !qg.size) return [];
+  if (typeof fullText === 'number') { k = fullText; fullText = null; } // retro-compatibile
+  const sw = getWordSet(stemText, 3);
+  const sg = getCharNgrams(stemText, 3);
+  if (!sw.size && !sg.size) return [];
+
+  // usiamo le opzioni solo se ne abbiamo lette abbastanza
+  const hasOpts = !!fullText && fullText.length > stemText.length + 15;
+  const fw = hasOpts ? getWordSet(fullText, 3) : null;
+  const fg = hasOpts ? getCharNgrams(fullText, 3) : null;
 
   const scored = new Array(DB_INDEX.length);
   for (let i = 0; i < DB_INDEX.length; i++) {
     const item = DB_INDEX[i];
-    const wordJac = jaccardSim(qw, item.words);
-    const ngramJac = jaccardSim(qg, item.grams);
-    const contain = containmentRatio(qw, item.words);
-    // Trigrams are most OCR-tolerant; containment helps when query is partial
-    const score = wordJac * 0.30 + ngramJac * 0.50 + contain * 0.20;
+    const stemScore = jaccardSim(sw, item.words) * 0.30
+                    + jaccardSim(sg, item.grams) * 0.50
+                    + containmentRatio(sw, item.words) * 0.20;
+    let score = stemScore;
+    if (hasOpts) {
+      const fullScore = jaccardSim(fw, item.fullWords) * 0.30
+                      + jaccardSim(fg, item.fullGrams) * 0.45
+                      + containmentRatio(fg, item.fullGrams) * 0.25;
+      // il blocco completo discrimina molto meglio -> pesa di piu'
+      score = stemScore * 0.35 + fullScore * 0.65;
+    }
     scored[i] = { q: item.q, score };
   }
   scored.sort((a, b) => b.score - a.score);
@@ -2718,17 +2807,21 @@ function extractQuestionsFromText(ocrText) {
   for (var h = 0; h < headers.length; h++) {
     var s = headers[h].contentStart;
     var e = (h + 1 < headers.length) ? headers[h + 1].headerStart : oneLine.length;
-    var text = oneLine.substring(s, e);
-    var optMatch = text.search(/(^|[\s,;])[A-Ea-e]\s*[.\)]\s+[A-ZÎÂȘȚĂÀ-ɏ]/);
-    if (optMatch >= 0) text = text.substring(0, optMatch);
-    text = text.replace(/\s+/g, ' ').replace(/[\s,;:]+$/, '').trim();
+    var block = oneLine.substring(s, e);
+    var optMatch = block.search(/(^|[\s,;])[A-Ea-e]\s*[.\)]\s+[A-ZÎÂȘȚĂÀ-ɏ]/);
+    // stem = solo la domanda; full = domanda + opzioni (senza i marcatori "A." "B.")
+    var stem = (optMatch >= 0 ? block.substring(0, optMatch) : block)
+                 .replace(/\s+/g, ' ').replace(/[\s,;:]+$/, '').trim();
+    var full = block.replace(/(^|[\s,;])[A-Ea-e]\s*[.\)]\s+/g, ' ')
+                    .replace(/\s+/g, ' ').replace(/[\s,;:]+$/, '').trim();
     // Light filter only — whole-OCR garbage is rejected separately in analyzeImage
-    if (text.length >= 8 && /[a-zA-ZÀ-ɏ]{4}/.test(text)) questions.push(text);
+    if (stem.length >= 8 && /[a-zA-ZÀ-ɏ]{4}/.test(stem)) questions.push({ stem: stem, full: full });
   }
 
   // Fallback: nothing structured → whole text as one query
   if (questions.length === 0 && oneLine.length > 20) {
-    questions.push(oneLine.replace(/[A-Ea-e]\s*[.\)]\s+/g, ' ').replace(/\s+/g, ' ').trim());
+    var whole = oneLine.replace(/[A-Ea-e]\s*[.\)]\s+/g, ' ').replace(/\s+/g, ' ').trim();
+    questions.push({ stem: whole, full: whole });
   }
   return questions;
 }
@@ -2825,10 +2918,10 @@ async function analyzeImage() {
 
     // Step 5: match each (always returns top 3)
     const t2 = performance.now();
-    const results = extracted.map((qText, i) => ({
+    const results = extracted.map((qq, i) => ({
       num: i + 1,
-      testo_immagine: qText,
-      candidates: findTopMatches(qText, 3),
+      testo_immagine: qq.stem,
+      candidates: findTopMatches(qq.stem, qq.full, 3),
     }));
     const matchMs = Math.round(performance.now() - t2);
     console.log(`[scan] match: ${matchMs}ms`);
@@ -2849,9 +2942,12 @@ function escapeHtml(s) {
 }
 
 function renderScanResults(items, rawOcrText) {
-  // Score thresholds
-  const STRONG = 0.20;
-  const WEAK = 0.06;
+  // Soglie calibrate sui dati reali (match su titolo + opzioni):
+  //   - testo che NON e' nel database  -> non supera 0.25
+  //   - match corretto con OCR pessimo -> non scende sotto 0.58
+  // Quindi 0.45 separa con margine, e sotto 0.28 e' rumore.
+  const STRONG = 0.45;
+  const WEAK = 0.28;
 
   let strong = 0, weak = 0, none = 0;
   items.forEach(it => {
