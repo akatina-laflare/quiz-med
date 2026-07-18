@@ -2337,8 +2337,12 @@ function renderHistoryChart(history) {
 // ═══════════════════════════════════════════
 // SEARCH
 // ═══════════════════════════════════════════
+function stripDiacritics(s) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 function doSearch() {
-  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const q = stripDiacritics(document.getElementById('search-input').value.trim().toLowerCase());
   const clearBtn = document.getElementById('search-clear');
   clearBtn.style.display = q ? '' : 'none';
 
@@ -2349,9 +2353,8 @@ function doSearch() {
   }
 
   const results = QUESTIONS.filter(item =>
-    item.domanda.toLowerCase().includes(q) ||
-    item.capitolo.toLowerCase().includes(q) ||
-    item.opzioni.some(o => o.toLowerCase().includes(q))
+    stripDiacritics(item.domanda.toLowerCase()).startsWith(q) ||
+    stripDiacritics(item.capitolo.toLowerCase()).includes(q)
   ).slice(0, 50);
 
   if (!results.length) {
@@ -2364,7 +2367,18 @@ function doSearch() {
   results.forEach(item => {
     const card = document.createElement('div');
     card.className = 'search-result-card';
-    const highlight = (text) => text.replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi'), m => `<mark>${m}</mark>`);
+    const highlight = (text) => {
+      const stripped = stripDiacritics(text.toLowerCase());
+      let result = '';
+      let i = 0;
+      while (i < text.length) {
+        const idx = stripped.indexOf(q, i);
+        if (idx === -1) { result += text.slice(i); break; }
+        result += text.slice(i, idx) + '<mark>' + text.slice(idx, idx + q.length) + '</mark>';
+        i = idx + q.length;
+      }
+      return result;
+    };
     card.innerHTML = `
       <div class="search-result-q">${highlight(item.domanda)}</div>
       <div class="search-result-meta">
