@@ -1263,7 +1263,7 @@
     <div class="search-content">
       <div class="search-box">
         <span class="search-icon">🔍</span>
-        <input type="text" id="search-input" placeholder="Cerca l'inizio di una domanda…" oninput="doSearch()">
+        <input type="text" id="search-input" placeholder="Cerca una domanda o una parola chiave…" oninput="doSearch()">
         <button class="btn btn-ghost btn-sm" onclick="clearSearch()" id="search-clear" style="display:none">✕</button>
       </div>
       <div id="search-results" class="search-results"></div>
@@ -2352,9 +2352,20 @@ function doSearch() {
     return;
   }
 
-  const results = QUESTIONS.filter(item =>
-    stripDiacritics(item.domanda.toLowerCase()).startsWith(q)
-  ).slice(0, 50);
+  // Cerca solo nel testo della domanda, ordinando per rilevanza:
+  //   1) la domanda inizia con quello che hai scritto
+  //   2) il testo cercato inizia una parola dentro la domanda (es. "basedow" in "Boala Basedow")
+  //   3) il testo compare comunque dentro una parola
+  const inizio = [], parola = [], dentro = [];
+  QUESTIONS.forEach(item => {
+    const d = stripDiacritics(item.domanda.toLowerCase());
+    const idx = d.indexOf(q);
+    if (idx === -1) return;
+    if (idx === 0) inizio.push(item);
+    else if (/[^a-z0-9]/.test(d[idx - 1])) parola.push(item);
+    else dentro.push(item);
+  });
+  const results = inizio.concat(parola, dentro).slice(0, 50);
 
   if (!results.length) {
     container.innerHTML = `<div class="search-empty">Nessun risultato per "<strong>${q}</strong>"</div>`;

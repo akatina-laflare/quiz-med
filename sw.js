@@ -5,7 +5,7 @@
      - font  : cache-first  (Google Fonts salvati al primo avvio online)
      - icone : cache-first
 */
-const VERSION = 'quiz-med-v3';
+const VERSION = 'quiz-med-v5';
 const CORE = [
   './',
   './index.html',
