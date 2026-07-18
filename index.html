@@ -1263,7 +1263,7 @@
     <div class="search-content">
       <div class="search-box">
         <span class="search-icon">🔍</span>
-        <input type="text" id="search-input" placeholder="Cerca per parola chiave, capitolo…" oninput="doSearch()">
+        <input type="text" id="search-input" placeholder="Cerca l'inizio di una domanda…" oninput="doSearch()">
         <button class="btn btn-ghost btn-sm" onclick="clearSearch()" id="search-clear" style="display:none">✕</button>
       </div>
       <div id="search-results" class="search-results"></div>
@@ -2353,8 +2353,7 @@ function doSearch() {
   }
 
   const results = QUESTIONS.filter(item =>
-    stripDiacritics(item.domanda.toLowerCase()).startsWith(q) ||
-    stripDiacritics(item.capitolo.toLowerCase()).includes(q)
+    stripDiacritics(item.domanda.toLowerCase()).startsWith(q)
   ).slice(0, 50);
 
   if (!results.length) {
