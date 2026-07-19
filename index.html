@@ -459,6 +459,14 @@
   .search-result-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .search-result-answer { margin-top: 8px; padding: 8px 12px; background: var(--green-light); color: var(--green); border-radius: 8px; font-size: 13px; font-weight: 500; line-height: 1.45; }
   .search-result-answer mark { background: var(--yellow-light); color: var(--text); border-radius: 3px; padding: 0 2px; }
+  /* lettera (A-E) davanti a ogni risposta corretta: resta incolonnata anche se il testo va a capo */
+  .search-result-answer { display: flex; gap: 8px; align-items: baseline; }
+  .search-result-letter {
+    flex: 0 0 auto; min-width: 14px;
+    font-weight: 800; font-size: 14px; text-align: center;
+  }
+  /* riepilogo delle lettere corrette, per una lettura immediata */
+  .badge-answers { background: var(--green-light); color: var(--green); font-weight: 800; letter-spacing: .5px; }
   .search-empty { text-align: center; padding: 48px 20px; color: var(--text2); font-size: 15px; }
 
   /* ════════════════════════════════════════
@@ -2368,7 +2376,7 @@ function doSearch() {
   const results = inizio.concat(parola, dentro).slice(0, 50);
 
   if (!results.length) {
-    container.innerHTML = `<div class="search-empty">Nessun risultato per "<strong>${q}</strong>"</div>`;
+    container.innerHTML = `<div class="search-empty">Nessun risultato per "<strong>${escapeHtml(q)}</strong>"</div>`;
     return;
   }
 
@@ -2394,8 +2402,9 @@ function doSearch() {
       <div class="search-result-meta">
         <span class="badge badge-accent" style="font-size:11px">${item.capitolo}</span>
         <span class="badge badge-gray">${item.multi ? 'Multipla' : 'Singola'}</span>
+        <span class="badge badge-answers">${[...item.risposte_corrette].sort((a,b) => a-b).map(i => letters[i]).join(' ')}</span>
       </div>
-      ${item.risposte_corrette.map(i => `<div class="search-result-answer">✓ ${highlight(escapeHtml(item.opzioni[i]))}</div>`).join('')}
+      ${[...item.risposte_corrette].sort((a,b) => a-b).map(i => `<div class="search-result-answer"><span class="search-result-letter">${letters[i]}</span><span>${highlight(escapeHtml(item.opzioni[i]))}</span></div>`).join('')}
     `;
     container.appendChild(card);
   });
